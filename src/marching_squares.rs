@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 use rand::prelude::*;
-use bevy_prototype_lyon::prelude::*;
+use bevy_prototype_lyon::prelude::{*, tess::path::commands};
 
 #[derive(Clone, Copy)]
 struct Cell {
@@ -47,61 +47,10 @@ fn setup(mut commands: Commands) {
     let grid = build_grid(width, height);    
 
     for square in grid.iter() {
-        //bottom left
-        let bot_left_rgb: f32 = if square.bot_left.state {
-            1.        
-        } else {
-            0.
-        };
-        commands.spawn(GeometryBuilder::build_as(
-            &s,
-            DrawMode::Fill(
-                FillMode::color(Color::rgb(bot_left_rgb, bot_left_rgb, bot_left_rgb)),
-            ),
-            Transform::from_xyz(square.bot_right.x as f32 * tile_size, square.bot_right.y as f32 * tile_size, 0.),
-        ));
-
-        //bottom right
-        let bot_right_rgb: f32 = if square.bot_right.state {
-            1.        
-        } else {
-            0.
-        };
-        commands.spawn(GeometryBuilder::build_as(
-            &s,
-            DrawMode::Fill(
-                FillMode::color(Color::rgb(bot_right_rgb, bot_right_rgb, bot_right_rgb)),
-            ),
-            Transform::from_xyz(square.bot_left.x as f32 * tile_size, square.bot_left.y as f32 * tile_size, 0.),
-        ));
-
-        //top right
-        let top_right_rgb: f32 = if square.top_right.state {
-            1.        
-        } else {
-            0.
-        };
-        commands.spawn(GeometryBuilder::build_as(
-            &s,
-            DrawMode::Fill(
-                FillMode::color(Color::rgb(top_right_rgb, top_right_rgb, top_right_rgb)),
-            ),
-            Transform::from_xyz(square.top_right.x as f32 * tile_size, square.top_right.y as f32 * tile_size, 0.),
-        ));
-
-        //top left
-        let top_left_rgb: f32 = if square.top_left.state {
-            1.        
-        } else {
-            0.
-        };
-        commands.spawn(GeometryBuilder::build_as(
-            &s,
-            DrawMode::Fill(
-                FillMode::color(Color::rgb(top_left_rgb, top_left_rgb, top_left_rgb)),
-            ),
-            Transform::from_xyz(square.top_left.x as f32 * tile_size, square.top_left.y as f32 * tile_size, 0.),
-        ));
+        spawn_square(&mut commands, &square.bot_right);
+        spawn_square(&mut commands, &square.bot_left);
+        spawn_square(&mut commands, &square.top_right);
+        spawn_square(&mut commands, &square.top_left);
 
         let rx = (square.bot_left.x * tile_size / 2.) + (square.bot_right.x * tile_size / 2.);
         let ry = (square.bot_left.y * tile_size / 2.) + (square.bot_right.y * tile_size / 2.);
@@ -121,18 +70,40 @@ fn setup(mut commands: Commands) {
     }
 }
 
+fn spawn_square(commands: &mut Commands, cell: &Cell) {
+    let tile_size = 20.;
+
+    let s = shapes::Rectangle {
+        extents: Vec2::new(5., 5.),
+        ..shapes::Rectangle::default()
+    };
+
+    let rgb: f32 = if cell.state {
+        1.        
+    } else {
+        0.
+    };
+    commands.spawn(GeometryBuilder::build_as(
+        &s,
+        DrawMode::Fill(
+            FillMode::color(Color::rgb(rgb, rgb, rgb)),
+        ),
+        Transform::from_xyz(cell.x as f32 * tile_size, cell.y as f32 * tile_size, 0.),
+    ));
+}
+
 fn build_grid(width: i32, height: i32) -> Vec<Square> {
     let w = width as usize;
     let h = height as usize;
     let empty_cell = Cell { x: 0., y: 0., state: false };
-    let empty = Square {
+    let empty_square = Square {
         bot_left: empty_cell,
         bot_right: empty_cell,
         top_right: empty_cell,
         top_left: empty_cell,
     };
     let size = (w * h) / 2. as usize;
-    let mut grid: Vec<Square> = vec![empty; size];
+    let mut grid: Vec<Square> = vec![empty_square; size];
 
     for x in 0..width {
         for y in 0..height {
@@ -142,14 +113,12 @@ fn build_grid(width: i32, height: i32) -> Vec<Square> {
                 let top_right = gen_cell(x + 1, y + 1);
                 let top_left = gen_cell(x, y + 1);
 
-                let square = Square {
+                grid.push(Square {
                     bot_left,
                     bot_right,
                     top_right,
                     top_left,
-                };
-
-                grid.push(square);
+                });
             }
         }
     }
