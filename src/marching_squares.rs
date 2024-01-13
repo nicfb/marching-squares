@@ -1,9 +1,9 @@
 /*
-1. render grid of squares with x width and y height
+1. render grid of cells with x width and y height
 2. toggle each square "on"/"off" based on random value
 3. loop through grid and draw line based on config (which squares are "on" or "off")
 */
-
+use std::vec;
 use bevy::prelude::*;
 use rand::prelude::*;
 use bevy_prototype_lyon::prelude::*;
@@ -47,38 +47,52 @@ impl Plugin for MarchingSquaresPlugin {
 }
 
 fn setup(mut commands: Commands) {
-    let width = 10;
-    let height = 10;
+    let width = 100;
+    let height = 100;
+    let grid = build_grid(width, height);
 
-    let grid = build_grid(width, height);    
+    for x in 0..grid.len() - 2 { //- 2 since each square takes into account the next row/column
+        for y in 0..grid[0].len() - 2{
+            let i = x as usize;
+            let j = y as usize;
 
-    for vertex in grid.iter() {
-        spawn_dot(&mut commands, &vertex.bot_right);
-        spawn_dot(&mut commands, &vertex.bot_left);
-        spawn_dot(&mut commands, &vertex.top_right);
-        spawn_dot(&mut commands, &vertex.top_left);
+            let square = Square {
+                bot_left: grid[i][j],
+                bot_right: grid[i + 1][j],
+                top_right: grid[i + 1][j + 1],
+                top_left: grid[i][j + 1]
+            };
 
-        let contour_line = get_contour_lines(vertex);
-        for line in contour_line.iter() {
-            let line_start = line[0];
-            let line_end = line[1];
-    
-            let mut path_builder = PathBuilder::new();
-            path_builder.move_to(line_start);
-            path_builder.line_to(line_end);
-    
-            let line = path_builder.build();
-            commands.spawn(GeometryBuilder::build_as(
-                &line,
-                DrawMode::Stroke(StrokeMode::new(Color::BLACK, 1.5)),
-                Transform::default(),
-            ));
+            spawn_dot(&mut commands, &square.bot_left);
+            spawn_dot(&mut commands, &square.bot_right);
+            spawn_dot(&mut commands, &square.top_right);
+            spawn_dot(&mut commands, &square.top_left);
+            draw_contour_lines(&mut commands, square);
         }
     }
 }
 
+fn draw_contour_lines(commands: &mut Commands, square: Square) {
+    let contour_lines = get_contour_lines(&square);
+    for line in contour_lines.iter() {
+        let line_start = line[0];
+        let line_end = line[1];
+
+        let mut path_builder = PathBuilder::new();
+        path_builder.move_to(line_start);
+        path_builder.line_to(line_end);
+
+        let line = path_builder.build();
+        commands.spawn(GeometryBuilder::build_as(
+            &line,
+            DrawMode::Stroke(StrokeMode::new(Color::BLACK, 1.5)),
+            Transform::default(),
+        ));
+    }
+}
+
 fn spawn_dot(commands: &mut Commands, cell: &Cell) {
-    let s = shapes::Circle {
+    let c = shapes::Circle {
         radius: 1.,
         ..shapes::Circle::default()
     };
@@ -89,7 +103,7 @@ fn spawn_dot(commands: &mut Commands, cell: &Cell) {
         1. //black
     };
     commands.spawn(GeometryBuilder::build_as(
-        &s,
+        &c,
         DrawMode::Fill(
             FillMode::color(Color::rgb(rgb, rgb, rgb)),
         ),
@@ -97,56 +111,15 @@ fn spawn_dot(commands: &mut Commands, cell: &Cell) {
     ));
 }
 
-fn build_grid(width: i32, height: i32) -> Vec<Square> {
+fn build_grid(width: i32, height: i32) -> Vec<Vec<Cell>> {
     let w = width as usize;
     let h = height as usize;
     let empty_cell = Cell { x: 0., y: 0., state: false };
-    let empty_square = Square {
-        bot_left: empty_cell,
-        bot_right: empty_cell,
-        top_right: empty_cell,
-        top_left: empty_cell,
-    };
-    let size = (w * h) / 2. as usize;
-    let mut grid: Vec<Square> = vec![empty_square; size];
-
-    //debugging
-    // grid.push(Square{
-    //     bot_left: Cell{
-    //         x: 0.,
-    //         y: 0.,
-    //         state: false
-    //     },
-    //     bot_right: Cell{
-    //         x: 1.,
-    //         y: 0.,
-    //         state: true
-    //     },
-    //     top_right: Cell{
-    //         x: 1.,
-    //         y: 1.,
-    //         state: true
-    //     },
-    //     top_left: Cell{
-    //         x: 0.,
-    //         y: 1.,
-    //         state: true
-    //     },
-    // });
+    let mut grid: Vec<Vec<Cell>> = vec![vec![empty_cell; w]; h];
 
     for x in 0..width - 1 {
         for y in 0..height - 1 {
-            let bot_left = gen_cell(x, y);
-            let bot_right = gen_cell(x + 1, y);
-            let top_right = gen_cell(x + 1, y + 1);
-            let top_left = gen_cell(x, y + 1);
-
-            grid.push(Square {
-                bot_left,
-                bot_right,
-                top_right,
-                top_left,
-            });
+            grid[x as usize][y as usize] = gen_cell(x, y);
         }
     }
     return grid;
@@ -166,121 +139,76 @@ fn gen_cell(x: i32, y: i32) -> Cell {
 
 fn get_contour_lines(square: &Square) -> Vec<Vec<Vec2>> {
     let case: i8 = square.get_config();
-    if case == 0 {
+    if case == 0 || case == 15 {
         //no contour line
         return vec![vec![Vec2::ZERO, Vec2::ZERO]];
-    } else if case == 1 {
+    } else if case == 1 || case == 14 {
         let rx = square.bot_left.x * TILE_SIZE;
         let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
         let ax = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
         let ay = square.bot_left.y * TILE_SIZE;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 2 {
+    } else if case == 2 || case == 13 {
         let rx = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
         let ry = square.bot_left.y * TILE_SIZE;
         let ax = square.bot_right.x * TILE_SIZE;
         let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 3 {
+    } else if case == 3 || case == 12 {
         let rx  = square.bot_left.x * TILE_SIZE;
         let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
         let ax = square.bot_right.x * TILE_SIZE;
         let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 4 {
+    } else if case == 4 || case == 11 {
         let rx = (square.bot_left.x * TILE_SIZE  + square.bot_right.x * TILE_SIZE) / 2.;
         let ry = square.top_left.y * TILE_SIZE;
         let ax = square.bot_right.x * TILE_SIZE;
         let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
     } 
-    else if case == 5 {
-        let rx1 = square.bot_left.x * TILE_SIZE;
-        let ry1 = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
-        let ax1 = (square.top_left.x * TILE_SIZE + square.top_right.x * TILE_SIZE) / 2.;
-        let ay1 = square.top_left.y * TILE_SIZE;
-        let line1 = vec![Vec2::new(rx1, ry1), Vec2::new(ax1, ay1)];
+    else if case == 5 || case == 10 {
+        //only ambiguous case
+        if case == 5 {
+            let rx1 = square.bot_left.x * TILE_SIZE;
+            let ry1 = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
+            let ax1 = (square.top_left.x * TILE_SIZE + square.top_right.x * TILE_SIZE) / 2.;
+            let ay1 = square.top_left.y * TILE_SIZE;
+            let line1 = vec![Vec2::new(rx1, ry1), Vec2::new(ax1, ay1)];
 
-        let rx2 = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ry2 = square.bot_left.y * TILE_SIZE;
-        let ax2 = square.bot_right.x * TILE_SIZE;
-        let ay2 = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
-        let line2 = vec![Vec2::new(rx2, ry2), Vec2::new(ax2, ay2)];
+            let rx2 = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
+            let ry2 = square.bot_left.y * TILE_SIZE;
+            let ax2 = square.bot_right.x * TILE_SIZE;
+            let ay2 = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
+            let line2 = vec![Vec2::new(rx2, ry2), Vec2::new(ax2, ay2)];
+            return vec![line1, line2];
+        } else {
+            //case 10
+            let rx1 = square.bot_left.x * TILE_SIZE;
+            let ry1 = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
+            let ax1 = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
+            let ay1 = square.bot_left.y * TILE_SIZE;
+            let line1 = vec![Vec2::new(rx1, ry1), Vec2::new(ax1, ay1)];
 
-        return vec![line1, line2];
-    } else if case == 6 {
+            let rx2 = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
+            let ry2 = square.top_left.y * TILE_SIZE;
+            let ax2 = square.bot_right.x * TILE_SIZE;
+            let ay2 = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
+            let line2 = vec![Vec2::new(rx2, ry2), Vec2::new(ax2, ay2)];
+            return vec![line1, line2];
+        }
+    } else if case == 6 || case == 9 {
         let rx = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
         let ry = square.bot_left.y * TILE_SIZE;
         let ax = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
         let ay = square.top_left.y * TILE_SIZE;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 7 {
+    } else if case == 7 || case == 8 {
         let rx = square.bot_left.x * TILE_SIZE;
         let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
         let ax = (square.top_left.x * TILE_SIZE + square.top_right.x * TILE_SIZE) / 2.;
         let ay = square.top_left.y * TILE_SIZE;
         return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 8 {
-        //same as 7
-        let rx = square.bot_left.x * TILE_SIZE;
-        let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
-        let ax = (square.top_left.x * TILE_SIZE + square.top_right.x * TILE_SIZE) / 2.;
-        let ay = square.top_left.y * TILE_SIZE;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 9 {
-        //same as 6
-        let rx = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ry = square.bot_left.y * TILE_SIZE;
-        let ax = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ay = square.top_left.y * TILE_SIZE;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 10 {
-        //1 and 4 combined
-        let rx1 = square.bot_left.x * TILE_SIZE;
-        let ry1 = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
-        let ax1 = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ay1 = square.bot_left.y * TILE_SIZE;
-        let line1 = vec![Vec2::new(rx1, ry1), Vec2::new(ax1, ay1)];
-
-        let rx2 = (square.bot_left.x * TILE_SIZE  + square.bot_right.x * TILE_SIZE) / 2.;
-        let ry2 = square.top_left.y * TILE_SIZE;
-        let ax2 = square.bot_right.x * TILE_SIZE;
-        let ay2 = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
-        let line2 = vec![Vec2::new(rx2, ry2), Vec2::new(ax2, ay2)];
-
-        return vec![line1, line2];
-    }
-    else if case == 11 {
-        //same as 4
-        let rx = (square.bot_left.x * TILE_SIZE  + square.bot_right.x * TILE_SIZE) / 2.;
-        let ry = square.top_left.y * TILE_SIZE;
-        let ax = square.bot_right.x * TILE_SIZE;
-        let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 12 {
-        //same as case 3
-        let rx  = square.bot_left.x * TILE_SIZE;
-        let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
-        let ax = square.bot_right.x * TILE_SIZE;
-        let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 13 {
-        //same as case 2
-        let rx = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ry = square.bot_left.y * TILE_SIZE;
-        let ax = square.bot_right.x * TILE_SIZE;
-        let ay = (square.bot_right.y * TILE_SIZE + square.top_right.y * TILE_SIZE) / 2.;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 14 {
-        //same as case 1
-        let rx = square.bot_left.x * TILE_SIZE;
-        let ry = (square.bot_left.y * TILE_SIZE + square.top_left.y * TILE_SIZE) / 2.;
-        let ax = (square.bot_left.x * TILE_SIZE + square.bot_right.x * TILE_SIZE) / 2.;
-        let ay = square.bot_left.y * TILE_SIZE;
-        return vec![vec![Vec2::new(rx, ry), Vec2::new(ax, ay)]];
-    } else if case == 15 {
-        //no contour line
-        return vec![vec![Vec2::ZERO, Vec2::ZERO]];
     } else {
         panic!("{} is not a valid case!", case);
     }
